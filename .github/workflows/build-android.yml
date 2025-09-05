@@ -2,105 +2,129 @@ name: Build Android APK
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [main, develop]
   pull_request:
-    branches: [ main ]
+    branches: [main]
   workflow_dispatch:
 
 jobs:
   build-android:
     runs-on: ubuntu-latest
-    
+
     steps:
-    - name: 🏗 Setup repo
-      uses: actions/checkout@v4
+      - name: 🏗 Setup repo
+        uses: actions/checkout@v4
 
-    - name: 🏗 Setup Node
-      uses: actions/setup-node@v4
-      with:
-        node-version: 18.x
-        cache: npm
-
-    - name: 🏗 Setup Java
-      uses: actions/setup-java@v4
-      with:
-        distribution: 'temurin'
-        java-version: '17'
-
-    - name: 🏗 Setup Android SDK
-      uses: android-actions/setup-android@v3
-
-    - name: 📦 Install dependencies
-      run: npm ci
-
-    - name: 🏗 Setup EAS
-      uses: expo/expo-github-action@v8
-      with:
-        expo-version: latest
-        eas-version: latest
-        token: ${{ secrets.EXPO_TOKEN }}
-
-    - name: 🚀 Build Android APK
-      run: eas build --platform android --profile preview --non-interactive
-      env:
-        EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
-
-    - name: 📱 Download APK
-      run: |
-        # Wait a moment for build to be processed
-        sleep 10
-        
-        # Get the latest build URL
-        BUILD_URL=$(eas build:list --platform=android --status=finished --limit=1 --json | jq -r '.[0].artifacts.buildUrl // empty')
-        
-        if [ ! -z "$BUILD_URL" ] && [ "$BUILD_URL" != "null" ]; then
-          echo "Downloading APK from: $BUILD_URL"
-          curl -L -o testapp-android.apk "$BUILD_URL"
-          echo "APK downloaded successfully"
-        else
-          echo "Build URL not found, checking for artifacts..."
-          eas build:download --latest --platform=android --output=./
-          
-          # Find the downloaded APK
-          APK_FILE=$(find . -name "*.apk" -type f | head -1)
-          if [ -f "$APK_FILE" ]; then
-            mv "$APK_FILE" testapp-android.apk
-            echo "APK found and renamed"
-          else
-            echo "No APK file found"
-            exit 1
+      - name: 🧹 Remove yarn.lock if exists
+        run: |
+          if [ -f "yarn.lock" ]; then
+            echo "Removing yarn.lock to prevent conflicts with npm"
+            rm yarn.lock
           fi
-        fi
-      env:
-        EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
 
-    - name: 📤 Upload APK artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: android-apk-${{ github.run_number }}
-        path: testapp-android.apk
-        retention-days: 30
+      - name: 🏗 Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18.x
+          cache: npm
 
-    - name: 🏷 Create Release (Main branch only)
-      if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-      uses: softprops/action-gh-release@v1
-      with:
-        tag_name: v${{ github.run_number }}
-        name: TestApp Android v${{ github.run_number }}
-        body: |
-          🚀 **Android APK Release**
-          
-          📱 **Build Info:**
-          - Platform: Android
-          - Format: APK
-          - Commit: ${{ github.sha }}
-          - Branch: ${{ github.ref_name }}
-          
-          📥 **Download:** Use the APK file attached below to install on your Android device.
-          
-          ⚠️ **Note:** You may need to enable "Install from Unknown Sources" in your Android settings.
-        files: testapp-android.apk
-        draft: false
-        prerelease: false
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: 🏗 Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "17"
+
+      - name: 🏗 Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: 🧹 Clear npm cache
+        run: npm cache clean --force
+
+      - name: 📦 Install dependencies
+        run: |
+          npm ci --legacy-peer-deps
+          npm ls || true
+
+      - name: 🔍 Debug environment
+        run: |
+          echo "Node version: $(node --version)"
+          echo "NPM version: $(npm --version)"
+          echo "Current directory: $(pwd)"
+          echo "Package files:"
+          ls -la package*.json 2>/dev/null || echo "No package files found"
+          echo "Checking for yarn.lock:"
+          ls -la yarn.lock 2>/dev/null || echo "No yarn.lock found (good for npm project)"
+          echo "Dependencies installed:"
+          npm list --depth=0 || true
+
+      - name: 🏗 Setup EAS
+        uses: expo/expo-github-action@v8
+        with:
+          expo-version: latest
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: 🚀 Build Android APK
+        run: eas build --platform android --profile preview --non-interactive
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+
+      - name: 📱 Download APK
+        run: |
+          # Wait a moment for build to be processed
+          sleep 10
+
+          # Get the latest build URL
+          BUILD_URL=$(eas build:list --platform=android --status=finished --limit=1 --json | jq -r '.[0].artifacts.buildUrl // empty')
+
+          if [ ! -z "$BUILD_URL" ] && [ "$BUILD_URL" != "null" ]; then
+            echo "Downloading APK from: $BUILD_URL"
+            curl -L -o testapp-android.apk "$BUILD_URL"
+            echo "APK downloaded successfully"
+          else
+            echo "Build URL not found, checking for artifacts..."
+            eas build:download --latest --platform=android --output=./
+            
+            # Find the downloaded APK
+            APK_FILE=$(find . -name "*.apk" -type f | head -1)
+            if [ -f "$APK_FILE" ]; then
+              mv "$APK_FILE" testapp-android.apk
+              echo "APK found and renamed"
+            else
+              echo "No APK file found"
+              exit 1
+            fi
+          fi
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+
+      - name: 📤 Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-apk-${{ github.run_number }}
+          path: testapp-android.apk
+          retention-days: 30
+
+      - name: 🏷 Create Release (Main branch only)
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ github.run_number }}
+          name: TestApp Android v${{ github.run_number }}
+          body: |
+            🚀 **Android APK Release**
+
+            📱 **Build Info:**
+            - Platform: Android
+            - Format: APK
+            - Commit: ${{ github.sha }}
+            - Branch: ${{ github.ref_name }}
+
+            📥 **Download:** Use the APK file attached below to install on your Android device.
+
+            ⚠️ **Note:** You may need to enable "Install from Unknown Sources" in your Android settings.
+          files: testapp-android.apk
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

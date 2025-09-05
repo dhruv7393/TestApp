@@ -79,6 +79,9 @@ const TaskItem = ({ item: task, drag, isActive }: RenderItemParams<Task>) => (
 export function DataSort() {
   const [tasks, setTasks] = useState<Task[]>(mockTasks);
 
+  // Sort tasks by priority (1 = highest priority first)
+  const sortedTasks = [...tasks].sort((a, b) => a.priority - b.priority);
+
   const handleDragEnd = ({ data }: { data: Task[] }) => {
     // Update priorities based on new positions (1-based)
     const updatedTasks = data.map((task, index) => ({
@@ -94,7 +97,7 @@ export function DataSort() {
         Task List (Drag to Reorder)
       </ThemedText>
       <DraggableFlatList
-        data={tasks}
+        data={sortedTasks}
         onDragEnd={handleDragEnd}
         keyExtractor={(item) => item._id}
         renderItem={(params) => <TaskItem {...params} />}
